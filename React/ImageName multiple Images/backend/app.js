@@ -10,15 +10,17 @@ const app = express();
 app.use(cors());
 
 // MongoDB connection
-mongoose.connect('mongodb+srv://samar0486:samar0486@allbackends.xm3hwao.mongodb.net/React_ImgNam', { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.connect('mongodb+srv://samar0486:samar0486@allbackends.xm3hwao.mongodb.net/React_ImgN', { useNewUrlParser: true, useUnifiedTopology: true })
     .then(() => console.log('MongoDB connected'))
     .catch(err => console.error('MongoDB connection error:', err));
 
 // Create a Mongoose schema
 const uploadSchema = new mongoose.Schema({
     name: String,
-    data: Buffer,
-    contentType: String
+    images: [{
+        data: Buffer,
+        contentType: String
+    }]
 });
 
 const Upload = mongoose.model('Upload', uploadSchema);
@@ -31,37 +33,42 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Endpoint to handle form submission
-app.post('/upload', upload.single('image'), (req, res) => {
-    const { file } = req;
+app.post('/upload', upload.fields([{ name: 'image1' }, { name: 'image2' }, { name: 'image3' }]), (req, res) => {
+    const { files } = req;
     const { name } = req.body;
-  
-    if (!file) {
-      return res.status(400).send('No file uploaded');
+
+    if (!files || Object.keys(files).length === 0) {
+        return res.status(400).send('No files uploaded');
     }
-  
-    const newImage = new Upload({
-      name: name,
-      data: file.buffer,
-      contentType: file.mimetype
+
+    const images = Object.values(files).map(fileArray => ({
+        data: fileArray[0].buffer,
+        contentType: fileArray[0].mimetype
+    }));
+
+    const newImages = new Upload({
+        name,
+        images
     });
 
-    newImage.save()
-        .then((savedImage) => res.status(200).json({ message: 'Upload successful!', imagePath: `imagesGet/${savedImage._id}` }))
+    newImages.save()
+        .then(savedImages => res.status(200).json({ message: 'Upload successful!', imagePaths: savedImages.images.map((_, index) => `imagesGet/${savedImages._id}/${index}`) }))
         .catch(err => {
             console.error('Error saving to MongoDB:', err);
             res.status(500).json({ error: 'Internal Server Error' });
         });
 });
 
-app.get('/imagesGet/:id', (req, res) => {
-    const { id } = req.params;
+app.get('/imagesGet/:id/:index', (req, res) => {
+    const { id, index } = req.params;
 
     Upload.findById(id)
-        .then(image => {
-            if (!image) {
+        .then(upload => {
+            if (!upload || !upload.images[index]) {
                 return res.status(404).send('Image not found');
             }
 
+            const image = upload.images[index];
             res.set('Content-Type', image.contentType);
             res.send(image.data);
         })
@@ -70,8 +77,8 @@ app.get('/imagesGet/:id', (req, res) => {
 
 app.get('/imagesGet', async (req, res) => {
     try {
-        const images = await Upload.find();
-        res.json(images);
+        const uploads = await Upload.find();
+        res.json(uploads);
     } catch (err) {
         res.status(500).send('Error fetching images');
     }
@@ -88,7 +95,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start the server
-const PORT = 5000;
+const PORT = 4600;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
